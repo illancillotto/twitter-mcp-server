@@ -1,0 +1,420 @@
+{
+  "name": "Twitter MCP - Complete Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "start",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "twitter-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 500],
+      "webhookId": "twitter-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"action\"]}}",
+              "operation": "equals",
+              "value2": "create_tweet"
+            }
+          ]
+        }
+      },
+      "id": "switch_action",
+      "name": "Switch Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [460, 500]
+    },
+    {
+      "parameters": {
+        "url": "http://twitter-mcp:8000/auth/login",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "username",
+              "value": "={{$env.TWITTER_USERNAME}}"
+            },
+            {
+              "name": "email",
+              "value": "={{$env.TWITTER_EMAIL}}"
+            },
+            {
+              "name": "password",
+              "value": "={{$env.TWITTER_PASSWORD}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "auth_login",
+      "name": "1. Authenticate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://twitter-mcp:8000/tweets/create",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{$json[\"text\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create_tweet",
+      "name": "2. Create Tweet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [680, 500]
+    },
+    {
+      "parameters": {
+        "url": "http://twitter-mcp:8000/tweets/search",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{$json[\"query\"]}}"
+            },
+            {
+              "name": "product",
+              "value": "Latest"
+            },
+            {
+              "name": "count",
+              "value": "={{$json[\"count\"] || 20}}"
+            }
+          ]
+        }
+      },
+      "id": "search_tweets",
+      "name": "3. Search Tweets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [680, 700]
+    },
+    {
+      "parameters": {
+        "url": "http://twitter-mcp:8000/users/profile",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "username",
+              "value": "={{$json[\"username\"]}}"
+            }
+          ]
+        }
+      },
+      "id": "get_user",
+      "name": "4. Get User Profile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [680, 900]
+    },
+    {
+      "parameters": {
+        "url": "http://twitter-mcp:8000/trends/trending",
+        "method": "GET",
+        "options": {}
+      },
+      "id": "get_trends",
+      "name": "5. Get Trends",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [680, 1100]
+    },
+    {
+      "parameters": {
+        "url": "http://twitter-mcp:8000/tweets/like?tweet_id={{$json[\"tweet_id\"]}}",
+        "method": "POST",
+        "options": {}
+      },
+      "id": "like_tweet",
+      "name": "6. Like Tweet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [900, 500]
+    },
+    {
+      "parameters": {
+        "url": "http://twitter-mcp:8000/tweets/retweet?tweet_id={{$json[\"tweet_id\"]}}",
+        "method": "POST",
+        "options": {}
+      },
+      "id": "retweet",
+      "name": "7. Retweet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [900, 700]
+    },
+    {
+      "parameters": {
+        "url": "http://twitter-mcp:8000/dm/send",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "user_id",
+              "value": "={{$json[\"user_id\"]}}"
+            },
+            {
+              "name": "message",
+              "value": "={{$json[\"message\"]}}"
+            }
+          ]
+        }
+      },
+      "id": "send_dm",
+      "name": "8. Send DM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [900, 900]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json[\"status\"] === \"success\"}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check_success",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1120, 500]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}"
+      },
+      "id": "respond_success",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 500,
+        "responseBody": "={{ {\"error\": \"Operation failed\", \"details\": $json} }}"
+      },
+      "id": "respond_error",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 600]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Error Handler con Retry Logic\nconst maxRetries = 3;\nconst retryDelay = 2000; // 2 secondi\n\nfor (const item of items) {\n  let attempt = 0;\n  let success = false;\n  \n  while (attempt < maxRetries && !success) {\n    try {\n      attempt++;\n      \n      // Log attempt\n      console.log(`Attempt ${attempt}/${maxRetries}`);\n      \n      // Check if previous node succeeded\n      if (item.json.status === 'success') {\n        success = true;\n        item.json.retries = attempt - 1;\n      } else {\n        throw new Error('Operation failed');\n      }\n      \n    } catch (error) {\n      if (attempt < maxRetries) {\n        console.log(`Retry in ${retryDelay}ms...`);\n        await new Promise(resolve => setTimeout(resolve, retryDelay));\n      } else {\n        item.json.error = error.message;\n        item.json.failed = true;\n      }\n    }\n  }\n}\n\nreturn items;"
+      },
+      "id": "error_handler",
+      "name": "Error Handler & Retry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 1100]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Rate Limiter\nconst delayMs = 2000; // 2 secondi tra requests\n\nfor (let i = 0; i < items.length; i++) {\n  if (i > 0) {\n    console.log(`Rate limiting: waiting ${delayMs}ms...`);\n    await new Promise(resolve => setTimeout(resolve, delayMs));\n  }\n  \n  items[i].json.processed_at = new Date().toISOString();\n  items[i].json.batch_index = i;\n}\n\nreturn items;"
+      },
+      "id": "rate_limiter",
+      "name": "Rate Limiter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 1100]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Data Transformer\n// Pulisce e formatta i dati da Twitter\n\nfor (const item of items) {\n  const tweet = item.json;\n  \n  // Extract clean data\n  item.json = {\n    id: tweet.id,\n    text: tweet.text,\n    author: tweet.user?.screen_name || 'unknown',\n    created: tweet.created_at,\n    engagement: {\n      likes: tweet.favorite_count || 0,\n      retweets: tweet.retweet_count || 0,\n      replies: tweet.reply_count || 0,\n      views: tweet.view_count || 0\n    },\n    metadata: {\n      is_retweet: tweet.retweeted || false,\n      is_quote: tweet.is_quote_status || false,\n      has_media: tweet.media?.length > 0\n    }\n  };\n}\n\nreturn items;"
+      },
+      "id": "data_transformer",
+      "name": "Data Transformer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 700]
+    },
+    {
+      "parameters": {
+        "url": "http://twitter-mcp:8000/health",
+        "method": "GET",
+        "options": {}
+      },
+      "id": "health_check",
+      "name": "Health Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [240, 1100]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "1. Authenticate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Switch Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Action": {
+      "main": [
+        [
+          {
+            "node": "2. Create Tweet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "3. Search Tweets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "4. Get User Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Authenticate": {
+      "main": [
+        [
+          {
+            "node": "2. Create Tweet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Create Tweet": {
+      "main": [
+        [
+          {
+            "node": "6. Like Tweet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Search Tweets": {
+      "main": [
+        [
+          {
+            "node": "Data Transformer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6. Like Tweet": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limiter": {
+      "main": [
+        [
+          {
+            "node": "Error Handler & Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 2,
+  "updatedAt": "2025-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

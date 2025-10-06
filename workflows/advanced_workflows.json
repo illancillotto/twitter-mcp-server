@@ -1,0 +1,407 @@
+{
+  "workflows": [
+    {
+      "name": "🤖 AI Content Generator & Publisher",
+      "description": "Genera contenuti con AI e pubblica su Twitter automaticamente",
+      "nodes": [
+        {
+          "name": "Schedule Daily",
+          "type": "n8n-nodes-base.cron",
+          "parameters": {
+            "cronExpression": "0 9,15,18 * * *"
+          },
+          "notes": "Trigger 3 volte al giorno: 9:00, 15:00, 18:00"
+        },
+        {
+          "name": "Get Trending Topics",
+          "type": "n8n-nodes-base.httpRequest",
+          "parameters": {
+            "url": "http://twitter-mcp:8000/trends/trending",
+            "method": "GET"
+          },
+          "notes": "Recupera trending topics per ispirazione"
+        },
+        {
+          "name": "Select Random Trend",
+          "type": "n8n-nodes-base.code",
+          "parameters": {
+            "mode": "runOnceForEachItem",
+            "jsCode": "// Seleziona trend casuale\nconst trends = items[0].json.trends;\nconst randomTrend = trends[Math.floor(Math.random() * trends.length)];\n\nreturn [{\n  json: {\n    topic: randomTrend.name,\n    url: randomTrend.url\n  }\n}];"
+          }
+        },
+        {
+          "name": "Generate Content with OpenAI",
+          "type": "n8n-nodes-base.openAi",
+          "parameters": {
+            "operation": "create",
+            "text": "Create an engaging tweet about {{$json.topic}}. Make it informative, add relevant emojis, and include 2-3 relevant hashtags. Max 280 characters.",
+            "model": "gpt-4"
+          },
+          "notes": "Usa OpenAI per generare contenuto"
+        },
+        {
+          "name": "Validate & Format",
+          "type": "n8n-nodes-base.code",
+          "parameters": {
+            "mode": "runOnceForEachItem",
+            "jsCode": "let tweet = items[0].json.text;\n\n// Truncate if too long\nif (tweet.length > 280) {\n  tweet = tweet.substring(0, 277) + '...';\n}\n\n// Add timestamp\nconst now = new Date();\n\nreturn [{\n  json: {\n    text: tweet,\n    generated_at: now.toISOString(),\n    topic: items[0].json.topic\n  }\n}];"
+          }
+        },
+        {
+          "name": "Post to Twitter",
+          "type": "n8n-nodes-base.httpRequest",
+          "parameters": {
+            "url": "http://twitter-mcp:8000/tweets/create",
+            "method": "POST",
+            "jsonParameters": true,
+            "body": {
+              "text": "={{$json.text}}"
+            }
+          }
+        },
+        {
+          "name": "Log to Database",
+          "type": "n8n-nodes-base.postgres",
+          "parameters": {
+            "operation": "insert",
+            "table": "published_tweets",
+            "columns": "tweet_id, text, topic, generated_at",
+            "values": "={{$json.tweet_id}}, ={{$json.text}}, ={{$json.topic}}, ={{$json.generated_at}}"
+          },
+          "notes": "Optional: salva in DB per analytics"
+        }
+      ]
+    },
+    {
+      "name": "🔍 Competitor Intelligence Bot",
+      "description": "Monitora competitors, analizza strategie e invia report",
+      "nodes": [
+        {
+          "name": "Schedule Every Hour",
+          "type": "n8n-nodes-base.cron",
+          "parameters": {
+            "cronExpression": "0 * * * *"
+          }
+        },
+        {
+          "name": "Load Competitor List",
+          "type": "n8n-nodes-base.code",
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "jsCode": "// Lista competitors da monitorare\nconst competitors = [\n  'competitor1',\n  'competitor2',\n  'competitor3'\n];\n\nreturn competitors.map(c => ({\n  json: { username: c }\n}));"
+          }
+        },
+        {
+          "name": "Get User Profile",
+          "type": "n8n-nodes-base.httpRequest",
+          "parameters": {
+            "url": "http://twitter-mcp:8000/users/profile",
+            "method": "POST",
+            "jsonParameters": true,
+            "body": {
+              "username": "={{$json.username}}"
+            }
+          }
+        },
+        {
+          "name": "Get Recent Tweets",
+          "type": "n8n-nodes-base.httpRequest",
+          "parameters": {
+            "url": "http://twitter-mcp:8000/users/tweets",
+            "method": "POST",
+            "jsonParameters": true,
+            "body": {
+              "username": "={{$json.username}}",
+              "count": 20
+            }
+          }
+        },
+        {
+          "name": "Analyze Strategy",
+          "type": "n8n-nodes-base.code",
+          "parameters": {
+            "mode": "runOnceForEachItem",
+            "jsCode": "const tweets = items[0].json.tweets;\nconst profile = items[0].json.profile;\n\n// Calculate metrics\nconst avgEngagement = tweets.reduce((sum, t) => \n  sum + (t.favorite_count + t.retweet_count), 0\n) / tweets.length;\n\nconst hashtagFreq = {};\ntweets.forEach(t => {\n  const hashtags = t.text.match(/#\\w+/g) || [];\n  hashtags.forEach(tag => {\n    hashtagFreq[tag] = (hashtagFreq[tag] || 0) + 1;\n  });\n});\n\nconst topHashtags = Object.entries(hashtagFreq)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 5)\n  .map(([tag]) => tag);\n\nreturn [{\n  json: {\n    username: profile.screen_name,\n    followers: profile.followers_count,\n    avg_engagement: avgEngagement.toFixed(2),\n    top_hashtags: topHashtags,\n    posting_frequency: tweets.length,\n    analysis_date: new Date().toISOString()\n  }\n}];"
+          }
+        },
+        {
+          "name": "Aggregate Reports",
+          "type": "n8n-nodes-base.aggregate",
+          "parameters": {
+            "aggregate": "aggregateAllItemData"
+          }
+        },
+        {
+          "name": "Format Email Report",
+          "type": "n8n-nodes-base.code",
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "jsCode": "const data = items.map(i => i.json);\n\nlet report = `# Competitor Intelligence Report\\n\\n`;\nreport += `Date: ${new Date().toLocaleDateString()}\\n\\n`;\n\ndata.forEach(comp => {\n  report += `## @${comp.username}\\n`;\n  report += `- Followers: ${comp.followers.toLocaleString()}\\n`;\n  report += `- Avg Engagement: ${comp.avg_engagement}\\n`;\n  report += `- Posts (24h): ${comp.posting_frequency}\\n`;\n  report += `- Top Hashtags: ${comp.top_hashtags.join(', ')}\\n\\n`;\n});\n\nreturn [{ json: { report } }];"
+          }
+        },
+        {
+          "name": "Send Email Report",
+          "type": "n8n-nodes-base.emailSend",
+          "parameters": {
+            "fromEmail": "bot@example.com",
+            "toEmail": "team@example.com",
+            "subject": "Twitter Competitor Intelligence Report",
+            "text": "={{$json.report}}"
+          }
+        },
+        {
+          "name": "Send Slack Notification",
+          "type": "n8n-nodes-base.slack",
+          "parameters": {
+            "channel": "#marketing",
+            "text": "📊 New competitor intelligence report available!\\n\\n={{$json.report}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "💬 Smart Auto-Responder",
+      "description": "Risponde automaticamente ai mentions con AI",
+      "nodes": [
+        {
+          "name": "Poll Notifications",
+          "type": "n8n-nodes-base.cron",
+          "parameters": {
+            "cronExpression": "*/5 * * * *"
+          },
+          "notes": "Check ogni 5 minuti"
+        },
+        {
+          "name": "Get Notifications",
+          "type": "n8n-nodes-base.httpRequest",
+          "parameters": {
+            "url": "http://twitter-mcp:8000/notifications",
+            "method": "GET"
+          }
+        },
+        {
+          "name": "Filter Mentions",
+          "type": "n8n-nodes-base.filter",
+          "parameters": {
+            "conditions": {
+              "string": [
+                {
+                  "value1": "={{$json.type}}",
+                  "operation": "equals",
+                  "value2": "mention"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Check if Already Replied",
+          "type": "n8n-nodes-base.redis",
+          "parameters": {
+            "operation": "get",
+            "key": "replied:{{$json.id}}"
+          },
+          "notes": "Usa Redis per tracking"
+        },
+        {
+          "name": "Skip if Replied",
+          "type": "n8n-nodes-base.if",
+          "parameters": {
+            "conditions": {
+              "boolean": [
+                {
+                  "value1": "={{$json.value === null}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Analyze Sentiment",
+          "type": "n8n-nodes-base.httpRequest",
+          "parameters": {
+            "url": "https://api.openai.com/v1/chat/completions",
+            "method": "POST",
+            "authentication": "genericCredentialType",
+            "jsonParameters": true,
+            "body": {
+              "model": "gpt-3.5-turbo",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "Analyze the sentiment of this tweet and categorize as: positive, negative, neutral, or question."
+                },
+                {
+                  "role": "user",
+                  "content": "={{$json.text}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Generate Appropriate Response",
+          "type": "n8n-nodes-base.openAi",
+          "parameters": {
+            "operation": "create",
+            "text": "Generate a helpful, friendly response to this tweet: '{{$json.text}}'. Sentiment: {{$json.sentiment}}. Keep it under 280 characters and maintain brand voice.",
+            "model": "gpt-4"
+          }
+        },
+        {
+          "name": "Post Reply",
+          "type": "n8n-nodes-base.httpRequest",
+          "parameters": {
+            "url": "http://twitter-mcp:8000/tweets/create",
+            "method": "POST",
+            "jsonParameters": true,
+            "body": {
+              "text": "={{$json.response}}",
+              "reply_to": "={{$json.tweet_id}}"
+            }
+          }
+        },
+        {
+          "name": "Mark as Replied",
+          "type": "n8n-nodes-base.redis",
+          "parameters": {
+            "operation": "set",
+            "key": "replied:{{$json.id}}",
+            "value": "true",
+            "expire": true,
+            "ttl": 604800
+          },
+          "notes": "TTL 7 giorni"
+        }
+      ]
+    },
+    {
+      "name": "📈 Growth Hacking Automation",
+      "description": "Trova e ingaggia utenti rilevanti per crescita organica",
+      "nodes": [
+        {
+          "name": "Schedule Engagement",
+          "type": "n8n-nodes-base.cron",
+          "parameters": {
+            "cronExpression": "0 */2 * * *"
+          },
+          "notes": "Ogni 2 ore"
+        },
+        {
+          "name": "Define Target Keywords",
+          "type": "n8n-nodes-base.code",
+          "parameters": {
+            "mode": "runOnceForAllItems",
+            "jsCode": "// Keywords rilevanti per il tuo settore\nconst keywords = [\n  '#automation',\n  '#nocode',\n  '#productivity',\n  '#workflow'\n];\n\nreturn keywords.map(k => ({ json: { keyword: k } }));"
+          }
+        },
+        {
+          "name": "Search Tweets",
+          "type": "n8n-nodes-base.httpRequest",
+          "parameters": {
+            "url": "http://twitter-mcp:8000/tweets/search",
+            "method": "POST",
+            "jsonParameters": true,
+            "body": {
+              "query": "={{$json.keyword}}",
+              "product": "Latest",
+              "count": 20
+            }
+          }
+        },
+        {
+          "name": "Filter Quality Tweets",
+          "type": "n8n-nodes-base.filter",
+          "parameters": {
+            "conditions": {
+              "number": [
+                {
+                  "value1": "={{$json.favorite_count + $json.retweet_count}}",
+                  "operation": "larger",
+                  "value2": 5
+                }
+              ],
+              "boolean": [
+                {
+                  "value1": "={{!$json.metadata.is_retweet}}"
+                }
+              ]
+            }
+          },
+          "notes": "Solo tweet originali con engagement minimo"
+        },
+        {
+          "name": "Check User Quality",
+          "type": "n8n-nodes-base.code",
+          "parameters": {
+            "mode": "runOnceForEachItem",
+            "jsCode": "const user = items[0].json.user;\n\n// Quality score\nconst followersFollowingRatio = user.followers_count / (user.following_count || 1);\nconst isVerified = user.verified;\nconst hasBio = user.description && user.description.length > 20;\n\nconst qualityScore = (\n  (followersFollowingRatio > 0.5 ? 2 : 0) +\n  (isVerified ? 3 : 0) +\n  (hasBio ? 1 : 0) +\n  (user.followers_count > 100 ? 1 : 0)\n);\n\nitems[0].json.quality_score = qualityScore;\nreturn items;"
+          }
+        },
+        {
+          "name": "Filter High Quality",
+          "type": "n8n-nodes-base.filter",
+          "parameters": {
+            "conditions": {
+              "number": [
+                {
+                  "value1": "={{$json.quality_score}}",
+                  "operation": "larger",
+                  "value2": 3
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Rate Limit",
+          "type": "n8n-nodes-base.code",
+          "parameters": {
+            "mode": "runOnceForEachItem",
+            "jsCode": "// Wait 10 seconds between actions\nawait new Promise(resolve => setTimeout(resolve, 10000));\nreturn items;"
+          }
+        },
+        {
+          "name": "Like Tweet",
+          "type": "n8n-nodes-base.httpRequest",
+          "parameters": {
+            "url": "http://twitter-mcp:8000/tweets/like?tweet_id={{$json.id}}",
+            "method": "POST"
+          }
+        },
+        {
+          "name": "Follow User (Selective)",
+          "type": "n8n-nodes-base.if",
+          "parameters": {
+            "conditions": {
+              "number": [
+                {
+                  "value1": "={{$json.quality_score}}",
+                  "operation": "larger",
+                  "value2": 5
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Execute Follow",
+          "type": "n8n-nodes-base.httpRequest",
+          "parameters": {
+            "url": "http://twitter-mcp:8000/users/follow?user_id={{$json.user.id}}",
+            "method": "POST"
+          }
+        },
+        {
+          "name": "Log Activity",
+          "type": "n8n-nodes-base.spreadsheetFile",
+          "parameters": {
+            "operation": "append",
+            "filePath": "/data/engagement_log.csv",
+            "data": "={{$now}},{{$json.id}},{{$json.user.screen_name}},like,{{$json.quality_score}}"
+          }
+        }
+      ]
+    }
+  ]
+}

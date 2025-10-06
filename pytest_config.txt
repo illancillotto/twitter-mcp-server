@@ -1,0 +1,76 @@
+# pytest.ini - Pytest Configuration
+
+[pytest]
+# Directories
+testpaths = tests
+python_files = test_*.py
+python_classes = Test*
+python_functions = test_*
+
+# Markers
+markers =
+    unit: Unit tests
+    integration: Integration tests
+    performance: Performance tests
+    slow: Slow running tests
+
+# Coverage
+addopts = 
+    --verbose
+    --strict-markers
+    --cov=mcp_server
+    --cov-report=html
+    --cov-report=term-missing
+    --cov-fail-under=80
+
+# Asyncio
+asyncio_mode = auto
+
+# Output
+console_output_style = progress
+
+# Warnings
+filterwarnings =
+    error
+    ignore::DeprecationWarning
+    ignore::PendingDeprecationWarning
+
+# ===========================================
+# requirements-dev.txt
+# Development and Testing Dependencies
+# ===========================================
+
+# Testing Framework
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+pytest-timeout==2.2.0
+
+# HTTP Testing
+httpx==0.26.0
+requests-mock==1.11.0
+
+# Code Quality
+black==23.12.1
+flake8==7.0.0
+mypy==1.7.1
+pylint==3.0.3
+isort==5.13.2
+
+# Pre-commit
+pre-commit==3.6.0
+
+# Type Stubs
+types-requests==2.31.0.10
+
+# Documentation
+mkdocs==1.5.3
+mkdocs-material==9.5.3
+
+# Performance Testing
+locust==2.20.0
+
+# Security
+bandit==1.7.6
+safety==2.3.5
