@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  twitter-mcp:
+    build: .
+    container_name: twitter-mcp-server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - TWITTER_USERNAME=${TWITTER_USERNAME}
+      - TWITTER_EMAIL=${TWITTER_EMAIL}
+      - TWITTER_PASSWORD=${TWITTER_PASSWORD}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - SERVER_PORT=${SERVER_PORT:-8000}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  default:
+    name: twitter-mcp-network
