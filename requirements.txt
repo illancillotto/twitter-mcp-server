@@ -5,5 +5,5 @@ twikit==2.3.3
 httpx==0.26.0
 aiofiles==23.2.1
 python-dotenv==1.0.0
-python-multipart==0.0.6
+python-multipart==0.0.18
 structlog==24.1.0
